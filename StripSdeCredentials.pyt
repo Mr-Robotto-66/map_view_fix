@@ -12,6 +12,7 @@ Python 2.7 / ArcMap 10.x compatible.
 
 import arcpy
 import os
+import time
 
 
 class Toolbox(object):
@@ -216,6 +217,8 @@ class StripSdeCredentials(object):
         replacement_sde = parameters[2].valueAsText
 
         # --- Phase 1: Discover files ---
+        overall_start = time.time()
+        arcpy.AddMessage("Discovering files...")
         lyr_files = []
         mxd_files = []
         for dirpath, _dirnames, filenames in os.walk(root_folder):
@@ -249,8 +252,15 @@ class StripSdeCredentials(object):
         files_with_errors = 0
 
         # --- Phase 2: Process .lyr files ---
-        for lyr_path in lyr_files:
-            arcpy.AddMessage("Scanning: {}".format(lyr_path))
+        if lyr_files:
+            arcpy.AddMessage(
+                "========== Phase 2: Processing {} .lyr files ==========".format(
+                    len(lyr_files)
+                )
+            )
+        for i, lyr_path in enumerate(lyr_files, 1):
+            file_start = time.time()
+            arcpy.AddMessage("[{}/{}] Scanning: {}".format(i, len(lyr_files), lyr_path))
             try:
                 lyr_file_obj = arcpy.mapping.Layer(lyr_path)
                 all_layers = arcpy.mapping.ListLayers(lyr_file_obj)
@@ -262,6 +272,9 @@ class StripSdeCredentials(object):
                     ):
                         modified_in_file += 1
                 if modified_in_file > 0:
+                    arcpy.AddMessage(
+                        "  Saving changes ({} layers updated)...".format(modified_in_file)
+                    )
                     lyr_file_obj.save()
                     files_modified += 1
                     layers_updated += modified_in_file
@@ -271,10 +284,18 @@ class StripSdeCredentials(object):
                     "  Error processing '{}': {}".format(lyr_path, exc)
                 )
                 files_with_errors += 1
+            arcpy.AddMessage("  Done ({:.1f}s)".format(time.time() - file_start))
 
         # --- Phase 3: Process .mxd files ---
-        for mxd_path in mxd_files:
-            arcpy.AddMessage("Scanning: {}".format(mxd_path))
+        if mxd_files:
+            arcpy.AddMessage(
+                "========== Phase 3: Processing {} .mxd files ==========".format(
+                    len(mxd_files)
+                )
+            )
+        for i, mxd_path in enumerate(mxd_files, 1):
+            file_start = time.time()
+            arcpy.AddMessage("[{}/{}] Scanning: {}".format(i, len(mxd_files), mxd_path))
             try:
                 mxd = arcpy.mapping.MapDocument(mxd_path)
                 all_layers = arcpy.mapping.ListLayers(mxd)
@@ -286,7 +307,14 @@ class StripSdeCredentials(object):
                     ):
                         modified_in_file += 1
                 if modified_in_file > 0:
-                    mxd.save()
+                    folder, basename = os.path.split(mxd_path)
+                    save_path = os.path.join(folder, "fixed_" + basename)
+                    arcpy.AddMessage(
+                        "  Saving changes ({} layers updated) -> {}".format(
+                            modified_in_file, save_path
+                        )
+                    )
+                    mxd.saveACopy(save_path)
                     files_modified += 1
                     layers_updated += modified_in_file
                 del mxd
@@ -295,6 +323,7 @@ class StripSdeCredentials(object):
                     "  Error processing '{}': {}".format(mxd_path, exc)
                 )
                 files_with_errors += 1
+            arcpy.AddMessage("  Done ({:.1f}s)".format(time.time() - file_start))
 
         # --- Phase 4: Summary ---
         arcpy.AddMessage("=" * 50)
@@ -308,4 +337,11 @@ class StripSdeCredentials(object):
             )
         else:
             arcpy.AddMessage("  Files with errors:   0")
+        elapsed = time.time() - overall_start
+        minutes = int(elapsed // 60)
+        seconds = int(elapsed % 60)
+        if minutes > 0:
+            arcpy.AddMessage("  Elapsed time:        {}m {:02d}s".format(minutes, seconds))
+        else:
+            arcpy.AddMessage("  Elapsed time:        {:.1f}s".format(elapsed))
         arcpy.AddMessage("=" * 50)
