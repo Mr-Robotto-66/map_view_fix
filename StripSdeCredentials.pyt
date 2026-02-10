@@ -48,6 +48,7 @@ class StripSdeCredentials(object):
             parameterType="Required",
             direction="Input",
         )
+        param_username.value = "map_view_"
 
         param_sde_file = arcpy.Parameter(
             displayName="Replacement .sde Connection File",
@@ -57,6 +58,7 @@ class StripSdeCredentials(object):
             direction="Input",
         )
         param_sde_file.filter.list = ["sde"]
+        param_sde_file.value = r"\\bctsdata\data\south_root\GIS_Workspace\Scripts_and_Tools\Map_view_fix\DBP06.sde"
 
         return [param_root, param_username, param_sde_file]
 
@@ -180,9 +182,9 @@ class StripSdeCredentials(object):
             )
             return False
 
-        if layer_user.lower() != target_username_lower:
+        if target_username_lower not in layer_user.lower():
             arcpy.AddMessage(
-                "    [{}] username '{}' does not match target '{}' - skipped".format(
+                "    [{}] username '{}' does not contain '{}' - skipped".format(
                     layer_name, layer_user, target_username_lower
                 )
             )
