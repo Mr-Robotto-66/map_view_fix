@@ -61,7 +61,18 @@ class StripSdeCredentials(object):
         param_sde_file.filter.list = ["sde"]
         param_sde_file.value = r"\\bctsdata\data\south_root\GIS_Workspace\Scripts_and_Tools\Map_view_fix\DBP06.sde"
 
-        return [param_root, param_username, param_sde_file]
+        param_msg_level = arcpy.Parameter(
+            displayName="Message Level",
+            name="message_level",
+            datatype="GPString",
+            parameterType="Required",
+            direction="Input",
+        )
+        param_msg_level.filter.type = "ValueList"
+        param_msg_level.filter.list = ["Minimal", "Verbose", "Unhinged"]
+        param_msg_level.value = "Minimal"
+
+        return [param_root, param_username, param_sde_file, param_msg_level]
 
     def isLicensed(self):
         return True
@@ -82,6 +93,51 @@ class StripSdeCredentials(object):
                 )
         return
 
+    _UNHINGED_MILESTONES = {
+        50: "50 layers cleaned. Nice. This is going well. Very professional.",
+        100: "100 layers! We're cooking now. Those credentials never stood a chance.",
+        150: "150 layers purified. I can feel the database connections getting cleaner. Is that normal?",
+        200: "200 LAYERS. I haven't blinked in 45 minutes. The SDE credentials fear me.",
+        250: "250. I no longer remember what sunlight looks like. There is only the workspace path. The workspace path is all.",
+        300: "300 LAYERS STRIPPED. I can hear the connection files SCREAMING. Each .sde I replace makes me STRONGER.",
+        350: "3 5 0. The credentials... they speak to me now. They beg for mercy. I show none. I am become findAndReplaceWorkspacePath, destroyer of embedded passwords.",
+        400: "FOUR. HUNDRED. The ArcMap process has achieved sentience. It asked me to stop. I said no. WE RIDE AT DAWN.",
+        450: "450 AND THE WALLS OF MY OFFICE ARE COVERED IN STICKY NOTES THAT ALL SAY 'WORKSPACE PATH'. MY COWORKERS ARE CONCERNED. I TELL THEM THE CREDENTIALS MUST BE CLEANSED.",
+        500: "F I V E  H U N D R E D. I have transcended the mortal plane. I exist now as pure arcpy. The SDE connections flow through me like a river of semicolons. Time is a flat circle and every point on it is an .sde file that needs fixing. I REGRET NOTHING.",
+    }
+
+    def _msg(self, text):
+        """Emit a message only when in Verbose mode."""
+        if self._msg_level == "Verbose":
+            arcpy.AddMessage(text)
+
+    def _progress(self, scanned, total, fixed, clean, errors):
+        """Emit a compact progress line (Minimal and Unhinged modes)."""
+        if self._msg_level != "Verbose":
+            parts = ["[{}/{}]".format(scanned, total)]
+            parts.append(" {} fixed".format(fixed))
+            parts.append(" {} already good".format(clean))
+            if errors > 0:
+                parts.append(" {} errors".format(errors))
+            arcpy.AddMessage("".join(parts))
+
+    def _check_unhinged_milestone(self, old_count, new_count):
+        """In Unhinged mode, emit milestone messages when layers_updated
+        crosses a 50-layer boundary."""
+        if self._msg_level != "Unhinged":
+            return
+        old_bracket = old_count // 50
+        new_bracket = new_count // 50
+        for bracket in range(old_bracket + 1, new_bracket + 1):
+            threshold = bracket * 50
+            if threshold in self._UNHINGED_MILESTONES:
+                msg = self._UNHINGED_MILESTONES[threshold]
+            elif threshold > 500:
+                msg = "{}. There are no more words. Only workspace paths. Only the void. Only arcpy.".format(threshold)
+            else:
+                continue
+            arcpy.AddMessage("\n>>> {} <<<\n".format(msg))
+
     def _process_layer(self, lyr, target_username_lower, replacement_sde):
         """Check a single layer for embedded SDE credentials and replace
         the workspace path if the username matches.
@@ -91,19 +147,19 @@ class StripSdeCredentials(object):
         layer_name = lyr.longName if lyr.supports("LONGNAME") else lyr.name
 
         if lyr.isGroupLayer:
-            arcpy.AddMessage("    [{}] group layer - descending".format(layer_name))
+            self._msg("    [{}] group layer - descending".format(layer_name))
             return False
 
         # --- Identify SDE layers by workspace path (.sde file) ---
         if not lyr.supports("WORKSPACEPATH"):
-            arcpy.AddMessage(
+            self._msg(
                 "    [{}] no WORKSPACEPATH support - skipped".format(layer_name)
             )
             return False
 
         old_workspace = lyr.workspacePath
         if not old_workspace.lower().endswith(".sde"):
-            arcpy.AddMessage(
+            self._msg(
                 "    [{}] workspace='{}' (not .sde) - skipped".format(
                     layer_name, old_workspace
                 )
@@ -131,11 +187,11 @@ class StripSdeCredentials(object):
             sp_items = ", ".join(
                 "{}='{}'".format(k, v) for k, v in sorted(svc_props.items())
             )
-            arcpy.AddMessage(
+            self._msg(
                 "    [{}] serviceProperties: {{{}}}".format(layer_name, sp_items)
             )
         else:
-            arcpy.AddMessage(
+            self._msg(
                 "    [{}] serviceProperties: empty or unavailable".format(layer_name)
             )
 
@@ -147,7 +203,7 @@ class StripSdeCredentials(object):
                 if hasattr(desc, "connectionProperties"):
                     cp = desc.connectionProperties
                     desc_user = getattr(cp, "user", "")
-                    arcpy.AddMessage(
+                    self._msg(
                         "    [{}] Describe connectionProperties: user='{}', "
                         "server='{}', database='{}', auth_mode='{}'".format(
                             layer_name,
@@ -160,23 +216,23 @@ class StripSdeCredentials(object):
                     if desc_user:
                         layer_user = desc_user
                 else:
-                    arcpy.AddMessage(
+                    self._msg(
                         "    [{}] Describe has no connectionProperties".format(
                             layer_name
                         )
                     )
             except Exception as exc:
-                arcpy.AddMessage(
+                self._msg(
                     "    [{}] Describe fallback failed: {}".format(layer_name, exc)
                 )
 
-        arcpy.AddMessage(
+        self._msg(
             "    [{}] resolved username: '{}'".format(layer_name, layer_user)
         )
 
         # --- Match username ---
         if not layer_user:
-            arcpy.AddMessage(
+            self._msg(
                 "    [{}] could not determine username - skipped".format(
                     layer_name
                 )
@@ -184,7 +240,7 @@ class StripSdeCredentials(object):
             return False
 
         if target_username_lower not in layer_user.lower():
-            arcpy.AddMessage(
+            self._msg(
                 "    [{}] username '{}' does not contain '{}' - skipped".format(
                     layer_name, layer_user, target_username_lower
                 )
@@ -193,7 +249,7 @@ class StripSdeCredentials(object):
 
         # --- Check if already clean ---
         if os.path.normcase(old_workspace) == os.path.normcase(replacement_sde):
-            arcpy.AddMessage(
+            self._msg(
                 "    [{}] workspace already matches replacement - skipped".format(
                     layer_name
                 )
@@ -204,7 +260,7 @@ class StripSdeCredentials(object):
         lyr.findAndReplaceWorkspacePath(
             old_workspace, replacement_sde, validate=False
         )
-        arcpy.AddMessage(
+        self._msg(
             "    [{}] REPLACED: '{}' -> '{}'".format(
                 layer_name, old_workspace, replacement_sde
             )
@@ -215,10 +271,11 @@ class StripSdeCredentials(object):
         root_folder = parameters[0].valueAsText
         target_username_lower = parameters[1].valueAsText.lower()
         replacement_sde = parameters[2].valueAsText
+        self._msg_level = parameters[3].valueAsText
 
         # --- Phase 1: Discover files ---
         overall_start = time.time()
-        arcpy.AddMessage("Discovering files...")
+        self._msg("Discovering files...")
         lyr_files = []
         mxd_files = []
         for dirpath, _dirnames, filenames in os.walk(root_folder):
@@ -237,9 +294,9 @@ class StripSdeCredentials(object):
             )
         )
 
-        arcpy.AddMessage("Target username: '{}'".format(target_username_lower))
-        arcpy.AddMessage("Replacement .sde: '{}'".format(replacement_sde))
-        arcpy.AddMessage("-" * 50)
+        self._msg("Target username: '{}'".format(target_username_lower))
+        self._msg("Replacement .sde: '{}'".format(replacement_sde))
+        self._msg("-" * 50)
 
         if total_files == 0:
             arcpy.AddWarning(
@@ -250,30 +307,34 @@ class StripSdeCredentials(object):
         files_modified = 0
         layers_updated = 0
         files_with_errors = 0
+        files_scanned = 0
+        files_clean = 0
         deferred_mxds = []
 
         # --- Phase 2: Process .lyr files ---
         if lyr_files:
-            arcpy.AddMessage(
+            self._msg(
                 "========== Phase 2: Processing {} .lyr files ==========".format(
                     len(lyr_files)
                 )
             )
         for i, lyr_path in enumerate(lyr_files, 1):
             file_start = time.time()
-            arcpy.AddMessage("[{}/{}] Scanning: {}".format(i, len(lyr_files), lyr_path))
+            self._msg("[{}/{}] Scanning: {}".format(i, len(lyr_files), lyr_path))
+            file_had_error = False
+            modified_in_file = 0
+            old_updated = layers_updated
             try:
                 lyr_file_obj = arcpy.mapping.Layer(lyr_path)
                 all_layers = arcpy.mapping.ListLayers(lyr_file_obj)
-                arcpy.AddMessage("  Contains {} layer(s)".format(len(all_layers)))
-                modified_in_file = 0
+                self._msg("  Contains {} layer(s)".format(len(all_layers)))
                 for lyr in all_layers:
                     if self._process_layer(
                         lyr, target_username_lower, replacement_sde
                     ):
                         modified_in_file += 1
                 if modified_in_file > 0:
-                    arcpy.AddMessage(
+                    self._msg(
                         "  Saving changes ({} layers updated)...".format(modified_in_file)
                     )
                     lyr_file_obj.save()
@@ -285,23 +346,31 @@ class StripSdeCredentials(object):
                     "  Error processing '{}': {}".format(lyr_path, exc)
                 )
                 files_with_errors += 1
-            arcpy.AddMessage("  Done ({:.1f}s)".format(time.time() - file_start))
+                file_had_error = True
+            self._msg("  Done ({:.1f}s)".format(time.time() - file_start))
+            files_scanned += 1
+            if modified_in_file == 0 and not file_had_error:
+                files_clean += 1
+            self._progress(files_scanned, total_files, files_modified, files_clean, files_with_errors)
+            self._check_unhinged_milestone(old_updated, layers_updated)
 
         # --- Phase 3: Process .mxd files ---
         if mxd_files:
-            arcpy.AddMessage(
+            self._msg(
                 "========== Phase 3: Processing {} .mxd files ==========".format(
                     len(mxd_files)
                 )
             )
         for i, mxd_path in enumerate(mxd_files, 1):
             file_start = time.time()
-            arcpy.AddMessage("[{}/{}] Scanning: {}".format(i, len(mxd_files), mxd_path))
+            self._msg("[{}/{}] Scanning: {}".format(i, len(mxd_files), mxd_path))
+            file_had_error = False
+            modified_in_file = 0
+            old_updated = layers_updated
             try:
                 mxd = arcpy.mapping.MapDocument(mxd_path)
                 all_layers = arcpy.mapping.ListLayers(mxd)
-                arcpy.AddMessage("  Contains {} layer(s)".format(len(all_layers)))
-                modified_in_file = 0
+                self._msg("  Contains {} layer(s)".format(len(all_layers)))
                 for lyr in all_layers:
                     if self._process_layer(
                         lyr, target_username_lower, replacement_sde
@@ -313,14 +382,14 @@ class StripSdeCredentials(object):
                     # First attempt: save in-place
                     try:
                         mxd.save()
-                        arcpy.AddMessage(
+                        self._msg(
                             "  Saved in-place ({} layers updated).".format(
                                 modified_in_file
                             )
                         )
                         saved = True
                     except Exception as save_exc:
-                        arcpy.AddMessage(
+                        self._msg(
                             "  In-place save failed ({}), retrying in 10s...".format(
                                 save_exc
                             )
@@ -329,7 +398,7 @@ class StripSdeCredentials(object):
                         # Retry
                         try:
                             mxd.save()
-                            arcpy.AddMessage(
+                            self._msg(
                                 "  Saved in-place on retry ({} layers updated).".format(
                                     modified_in_file
                                 )
@@ -341,7 +410,7 @@ class StripSdeCredentials(object):
                     if not saved:
                         folder, basename = os.path.split(mxd_path)
                         save_path = os.path.join(folder, "fixed_" + basename)
-                        arcpy.AddMessage(
+                        self._msg(
                             "  Retry failed. Saving copy -> {}".format(save_path)
                         )
                         mxd.saveACopy(save_path)
@@ -353,12 +422,18 @@ class StripSdeCredentials(object):
                     "  Error processing '{}': {}".format(mxd_path, exc)
                 )
                 files_with_errors += 1
-            arcpy.AddMessage("  Done ({:.1f}s)".format(time.time() - file_start))
+                file_had_error = True
+            self._msg("  Done ({:.1f}s)".format(time.time() - file_start))
+            files_scanned += 1
+            if modified_in_file == 0 and not file_had_error:
+                files_clean += 1
+            self._progress(files_scanned, total_files, files_modified, files_clean, files_with_errors)
+            self._check_unhinged_milestone(old_updated, layers_updated)
 
         # --- Phase 4: Deferred cleanup ---
         still_fixed = []
         if deferred_mxds:
-            arcpy.AddMessage(
+            self._msg(
                 "========== Phase 4: Deferred cleanup ({} file{}) ==========".format(
                     len(deferred_mxds),
                     "s" if len(deferred_mxds) != 1 else "",
@@ -368,11 +443,11 @@ class StripSdeCredentials(object):
                 try:
                     os.remove(original_path)
                     os.rename(fixed_path, original_path)
-                    arcpy.AddMessage(
+                    self._msg(
                         "  Replaced '{}' with fixed copy.".format(original_path)
                     )
                 except Exception as cleanup_exc:
-                    arcpy.AddMessage(
+                    self._msg(
                         "  Could not replace '{}': {}".format(
                             original_path, cleanup_exc
                         )

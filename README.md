@@ -60,6 +60,7 @@ To make the toolbox available in every session, right-click ArcToolbox > **Save 
 | **Root Folder to Scan** | `root_folder` | Folder (Required) | Top-level directory to scan. The tool walks all subdirectories recursively looking for `.lyr` and `.mxd` files. |
 | **SDE Username to Match** | `sde_username` | String (Required) | The database username whose embedded credentials should be stripped. Matching is case-insensitive. |
 | **Replacement .sde Connection File** | `replacement_sde` | File `.sde` (Required) | A clean `.sde` connection file that does not store credentials. This replaces the existing workspace path on every matched layer. |
+| **Message Level** | `message_level` | String (Required) | Controls output verbosity. **Minimal** (default): compact progress counters. **Verbose**: full per-layer diagnostic output. **Unhinged**: minimal output plus escalating milestone commentary every 50 layers. |
 
 ### Running the Tool
 
