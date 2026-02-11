@@ -60,16 +60,17 @@ To make the toolbox available in every session, right-click ArcToolbox > **Save 
 | **Root Folder to Scan** | `root_folder` | Folder (Required) | Top-level directory to scan. The tool walks all subdirectories recursively looking for `.lyr` and `.mxd` files. |
 | **SDE Username to Match** | `sde_username` | String (Required) | The database username whose embedded credentials should be stripped. Matching is case-insensitive. |
 | **Replacement .sde Connection File** | `replacement_sde` | File `.sde` (Required) | A clean `.sde` connection file that does not store credentials. This replaces the existing workspace path on every matched layer. |
-| **Message Level** | `message_level` | String (Required) | Controls output verbosity. **Minimal** (default): compact progress counters. **Verbose**: full per-layer diagnostic output. **Unhinged**: minimal output plus escalating milestone commentary every 50 layers. |
+| **Message Level** | `message_level` | String (Required) | Controls output verbosity. **Minimal** (default): compact progress counters and summary. **Verbose**: full per-layer diagnostic output. |
 
 ### Running the Tool
 
 1. In the ArcToolbox window, expand **Strip SDE Credentials**.
 2. Double-click the **Strip SDE Credentials** tool to open the dialog.
-3. Fill in the three required parameters:
+3. Fill in the four required parameters:
    - Browse to the root folder you want to scan.
    - Enter the SDE username (e.g., `sde_admin`).
    - Browse to your replacement `.sde` file.
+   - Choose a message level (Minimal is the default).
 4. Click **OK** to run the tool.
 5. Monitor progress in the **Results** window (Geoprocessing > Results).
 
@@ -86,6 +87,7 @@ Open the tool dialog and enter:
 | Root Folder to Scan | `\\server\gis\projects\water_main` |
 | SDE Username to Match | `sde_editor` |
 | Replacement .sde Connection File | `\\server\gis\connections\PRODUCTION.sde` |
+| Message Level | `Minimal` |
 
 Click **OK**. The tool will:
 1. Recursively scan `\\server\gis\projects\water_main` for `.lyr` and `.mxd` files.
@@ -105,29 +107,29 @@ arcpy.ImportToolbox(r"\\server\gis\tools\StripSdeCredentials.pyt", "stripsdecred
 
 # Execute the tool
 arcpy.StripSdeCredentials_stripsdecreds(
-    r"\\server\gis\projects\water_main",   # root_folder
-    "sde_editor",                           # sde_username
-    r"\\server\gis\connections\PRODUCTION.sde"  # replacement_sde
+    r"\\server\gis\projects\water_main",       # root_folder
+    "sde_editor",                               # sde_username
+    r"\\server\gis\connections\PRODUCTION.sde", # replacement_sde
+    "Minimal"                                   # message_level
 )
 ```
 
-Expected output:
+Expected output (Minimal mode):
 
 ```
 Found 12 files to scan (5 .lyr, 7 .mxd).
-Target username: 'sde_editor'
-Replacement .sde: '\\server\gis\connections\PRODUCTION.sde'
---------------------------------------------------
-Scanning: \\server\gis\projects\water_main\Parcels.lyr
-  Contains 1 layer(s)
-    [Parcels] REPLACED: 'C:\Users\sde_editor\AppData\...\connection.sde' -> '\\server\gis\connections\PRODUCTION.sde'
+[1/12] 1 fixed 0 already good
+[2/12] 1 fixed 1 already good
+[3/12] 2 fixed 1 already good
 ...
+[12/12] 4 fixed 7 already good 1 errors
 ==================================================
 Summary:
   Files scanned:      12
   Files modified:      4
   Layers updated:      7
-  Files with errors:   0
+  Files with errors:   1
+  Elapsed time:        12.3s
 ==================================================
 ```
 
@@ -168,7 +170,7 @@ The tool uses two methods to determine the SDE username for each layer:
 1. **`serviceProperties` (primary):** Reads the `UserName` key from the layer's `serviceProperties` dictionary. This is the most reliable method when available.
 2. **`arcpy.Describe` connectionProperties (fallback):** If `serviceProperties` does not return a username, the tool falls back to `arcpy.Describe(lyr).connectionProperties.user`.
 
-Both methods are logged to the output for diagnostic purposes.
+Both methods are logged to the output (in Verbose mode) for diagnostic purposes.
 
 ### Layer Filtering
 
@@ -194,7 +196,31 @@ The tool writes messages to the ArcMap Results window using two message types:
 | Info | `arcpy.AddMessage()` | Progress updates, layer inspection results, replacement confirmations, summary statistics |
 | Warning | `arcpy.AddWarning()` | Errors processing individual files, no files found in the root folder |
 
-Example console output for a single `.lyr` file:
+The amount of detail is controlled by the **Message Level** parameter.
+
+### Minimal mode (default)
+
+Prints a discovery line, one compact progress counter per file, and a summary:
+
+```
+Found 15 files to scan (8 .lyr, 7 .mxd).
+[1/15] 1 fixed 0 already good
+[2/15] 1 fixed 1 already good
+...
+[15/15] 3 fixed 11 already good 1 errors
+==================================================
+Summary:
+  Files scanned:      15
+  Files modified:      3
+  Layers updated:      5
+  Files with errors:   1
+  Elapsed time:        18.7s
+==================================================
+```
+
+### Verbose mode
+
+Shows the full per-layer diagnostic output for every file. This is useful when troubleshooting which layers matched or were skipped:
 
 ```
 Scanning: \\server\gis\projects\Parcels.lyr
@@ -209,17 +235,7 @@ Scanning: \\server\gis\projects\Parcels.lyr
     [Parcels\Labels] could not determine username - skipped
 ```
 
-The final summary block uses `=` separators:
-
-```
-==================================================
-Summary:
-  Files scanned:      15
-  Files modified:      3
-  Layers updated:      5
-  Files with errors:   0
-==================================================
-```
+The summary block at the end is the same in both modes.
 
 ---
 

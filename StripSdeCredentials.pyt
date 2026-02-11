@@ -94,16 +94,16 @@ class StripSdeCredentials(object):
         return
 
     _UNHINGED_MILESTONES = {
-        50: "50 layers cleaned. Nice. This is going well. Very professional.",
-        100: "100 layers! We're cooking now. Those credentials never stood a chance.",
-        150: "150 layers purified. I can feel the database connections getting cleaner. Is that normal?",
-        200: "200 LAYERS. I haven't blinked in 45 minutes. The SDE credentials fear me.",
-        250: "250. I no longer remember what sunlight looks like. There is only the workspace path. The workspace path is all.",
-        300: "300 LAYERS STRIPPED. I can hear the connection files SCREAMING. Each .sde I replace makes me STRONGER.",
-        350: "3 5 0. The credentials... they speak to me now. They beg for mercy. I show none. I am become findAndReplaceWorkspacePath, destroyer of embedded passwords.",
-        400: "FOUR. HUNDRED. The ArcMap process has achieved sentience. It asked me to stop. I said no. WE RIDE AT DAWN.",
-        450: "450 AND THE WALLS OF MY OFFICE ARE COVERED IN STICKY NOTES THAT ALL SAY 'WORKSPACE PATH'. MY COWORKERS ARE CONCERNED. I TELL THEM THE CREDENTIALS MUST BE CLEANSED.",
-        500: "F I V E  H U N D R E D. I have transcended the mortal plane. I exist now as pure arcpy. The SDE connections flow through me like a river of semicolons. Time is a flat circle and every point on it is an .sde file that needs fixing. I REGRET NOTHING.",
+        20: "20 layers cleaned. Nice. This is going well. Very professional.",
+        40: "40 layers! We're cooking now. Those credentials never stood a chance.",
+        60: "60 layers purified. I can feel the database connections getting cleaner. Is that normal?",
+        80: "80 LAYERS. I haven't blinked in 45 minutes. The SDE credentials fear me.",
+        100: "100. I no longer remember what sunlight looks like. There is only the workspace path. The workspace path is all.",
+        120: "120 LAYERS STRIPPED. I can hear the connection files SCREAMING. Each .sde I replace makes me STRONGER.",
+        140: "1 4 0. The credentials... they speak to me now. They beg for mercy. I show none. I am become findAndReplaceWorkspacePath, destroyer of embedded passwords.",
+        160: "ONE. SIXTY. The ArcMap process has achieved sentience. It asked me to stop. I said no. WE RIDE AT DAWN.",
+        180: "180 AND THE WALLS OF MY OFFICE ARE COVERED IN STICKY NOTES THAT ALL SAY 'WORKSPACE PATH'. MY COWORKERS ARE CONCERNED. I TELL THEM THE CREDENTIALS MUST BE CLEANSED.",
+        200: "T W O  H U N D R E D. I have transcended the mortal plane. I exist now as pure arcpy. The SDE connections flow through me like a river of semicolons. Time is a flat circle and every point on it is an .sde file that needs fixing. I REGRET NOTHING.",
     }
 
     def _msg(self, text):
@@ -123,16 +123,16 @@ class StripSdeCredentials(object):
 
     def _check_unhinged_milestone(self, old_count, new_count):
         """In Unhinged mode, emit milestone messages when layers_updated
-        crosses a 50-layer boundary."""
+        crosses a 20-layer boundary."""
         if self._msg_level != "Unhinged":
             return
-        old_bracket = old_count // 50
-        new_bracket = new_count // 50
+        old_bracket = old_count // 20
+        new_bracket = new_count // 20
         for bracket in range(old_bracket + 1, new_bracket + 1):
-            threshold = bracket * 50
+            threshold = bracket * 20
             if threshold in self._UNHINGED_MILESTONES:
                 msg = self._UNHINGED_MILESTONES[threshold]
-            elif threshold > 500:
+            elif threshold > 200:
                 msg = "{}. There are no more words. Only workspace paths. Only the void. Only arcpy.".format(threshold)
             else:
                 continue
