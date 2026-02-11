@@ -250,6 +250,7 @@ class StripSdeCredentials(object):
         files_modified = 0
         layers_updated = 0
         files_with_errors = 0
+        deferred_mxds = []
 
         # --- Phase 2: Process .lyr files ---
         if lyr_files:
@@ -307,16 +308,45 @@ class StripSdeCredentials(object):
                     ):
                         modified_in_file += 1
                 if modified_in_file > 0:
-                    folder, basename = os.path.split(mxd_path)
-                    save_path = os.path.join(folder, "fixed_" + basename)
-                    arcpy.AddMessage(
-                        "  Saving changes ({} layers updated) -> {}".format(
-                            modified_in_file, save_path
-                        )
-                    )
-                    mxd.saveACopy(save_path)
-                    files_modified += 1
                     layers_updated += modified_in_file
+                    saved = False
+                    # First attempt: save in-place
+                    try:
+                        mxd.save()
+                        arcpy.AddMessage(
+                            "  Saved in-place ({} layers updated).".format(
+                                modified_in_file
+                            )
+                        )
+                        saved = True
+                    except Exception as save_exc:
+                        arcpy.AddMessage(
+                            "  In-place save failed ({}), retrying in 10s...".format(
+                                save_exc
+                            )
+                        )
+                        time.sleep(10)
+                        # Retry
+                        try:
+                            mxd.save()
+                            arcpy.AddMessage(
+                                "  Saved in-place on retry ({} layers updated).".format(
+                                    modified_in_file
+                                )
+                            )
+                            saved = True
+                        except Exception:
+                            pass
+                    # Fallback: save as fixed_ copy
+                    if not saved:
+                        folder, basename = os.path.split(mxd_path)
+                        save_path = os.path.join(folder, "fixed_" + basename)
+                        arcpy.AddMessage(
+                            "  Retry failed. Saving copy -> {}".format(save_path)
+                        )
+                        mxd.saveACopy(save_path)
+                        deferred_mxds.append((mxd_path, save_path))
+                    files_modified += 1
                 del mxd
             except Exception as exc:
                 arcpy.AddWarning(
@@ -325,7 +355,31 @@ class StripSdeCredentials(object):
                 files_with_errors += 1
             arcpy.AddMessage("  Done ({:.1f}s)".format(time.time() - file_start))
 
-        # --- Phase 4: Summary ---
+        # --- Phase 4: Deferred cleanup ---
+        still_fixed = []
+        if deferred_mxds:
+            arcpy.AddMessage(
+                "========== Phase 4: Deferred cleanup ({} file{}) ==========".format(
+                    len(deferred_mxds),
+                    "s" if len(deferred_mxds) != 1 else "",
+                )
+            )
+            for original_path, fixed_path in deferred_mxds:
+                try:
+                    os.remove(original_path)
+                    os.rename(fixed_path, original_path)
+                    arcpy.AddMessage(
+                        "  Replaced '{}' with fixed copy.".format(original_path)
+                    )
+                except Exception as cleanup_exc:
+                    arcpy.AddMessage(
+                        "  Could not replace '{}': {}".format(
+                            original_path, cleanup_exc
+                        )
+                    )
+                    still_fixed.append(fixed_path)
+
+        # --- Phase 5: Summary ---
         arcpy.AddMessage("=" * 50)
         arcpy.AddMessage("Summary:")
         arcpy.AddMessage("  Files scanned:      {}".format(total_files))
@@ -344,4 +398,11 @@ class StripSdeCredentials(object):
             arcpy.AddMessage("  Elapsed time:        {}m {:02d}s".format(minutes, seconds))
         else:
             arcpy.AddMessage("  Elapsed time:        {:.1f}s".format(elapsed))
+        if still_fixed:
+            arcpy.AddWarning(
+                "  The following MXDs could not be saved in-place "
+                "and retain the fixed_ prefix:"
+            )
+            for fp in still_fixed:
+                arcpy.AddWarning("    {}".format(fp))
         arcpy.AddMessage("=" * 50)
