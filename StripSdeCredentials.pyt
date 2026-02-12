@@ -41,7 +41,6 @@ class StripSdeCredentials(object):
             parameterType="Required",
             direction="Input",
         )
-
         param_username = arcpy.Parameter(
             displayName="SDE Username to Match",
             name="sde_username",
