@@ -61,6 +61,24 @@ class StripSdeCredentials(object):
         param_sde_file.filter.list = ["sde"]
         param_sde_file.value = r"\\bctsdata\data\south_root\GIS_Workspace\Scripts_and_Tools\Map_view_fix\DBP06.sde"
 
+        param_process_lyr = arcpy.Parameter(
+            displayName="Process .lyr Files",
+            name="process_lyr",
+            datatype="GPBoolean",
+            parameterType="Required",
+            direction="Input",
+        )
+        param_process_lyr.value = True
+
+        param_process_mxd = arcpy.Parameter(
+            displayName="Process .mxd Files",
+            name="process_mxd",
+            datatype="GPBoolean",
+            parameterType="Required",
+            direction="Input",
+        )
+        param_process_mxd.value = True
+
         param_msg_level = arcpy.Parameter(
             displayName="Message Level",
             name="message_level",
@@ -72,7 +90,7 @@ class StripSdeCredentials(object):
         param_msg_level.filter.list = ["Minimal", "Verbose", "Unhinged"]
         param_msg_level.value = "Minimal"
 
-        return [param_root, param_username, param_sde_file, param_msg_level]
+        return [param_root, param_username, param_sde_file, param_process_lyr, param_process_mxd, param_msg_level]
 
     def isLicensed(self):
         return True
@@ -271,7 +289,13 @@ class StripSdeCredentials(object):
         root_folder = parameters[0].valueAsText
         target_username_lower = parameters[1].valueAsText.lower()
         replacement_sde = parameters[2].valueAsText
-        self._msg_level = parameters[3].valueAsText
+        process_lyr = parameters[3].value
+        process_mxd = parameters[4].value
+        self._msg_level = parameters[5].valueAsText
+
+        if not process_lyr and not process_mxd:
+            arcpy.AddWarning("Both .lyr and .mxd processing are disabled. Nothing to do.")
+            return
 
         # --- Phase 1: Discover files ---
         overall_start = time.time()
@@ -282,9 +306,9 @@ class StripSdeCredentials(object):
             for fn in filenames:
                 ext = os.path.splitext(fn)[1].lower()
                 full_path = os.path.join(dirpath, fn)
-                if ext == ".lyr":
+                if process_lyr and ext == ".lyr":
                     lyr_files.append(full_path)
-                elif ext == ".mxd":
+                elif process_mxd and ext == ".mxd":
                     mxd_files.append(full_path)
 
         total_files = len(lyr_files) + len(mxd_files)
@@ -299,9 +323,13 @@ class StripSdeCredentials(object):
         self._msg("-" * 50)
 
         if total_files == 0:
-            arcpy.AddWarning(
-                "No .lyr or .mxd files found under '{}'.".format(root_folder)
-            )
+            if process_lyr and process_mxd:
+                no_files_msg = "No .lyr or .mxd files found under '{}'.".format(root_folder)
+            elif process_lyr:
+                no_files_msg = "No .lyr files found under '{}'.".format(root_folder)
+            else:
+                no_files_msg = "No .mxd files found under '{}'.".format(root_folder)
+            arcpy.AddWarning(no_files_msg)
             return
 
         files_modified = 0
